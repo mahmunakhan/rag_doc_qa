@@ -1,0 +1,124 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+newenv/
+.venv
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment variables
+.env
+.env.local
+
+# Operating System
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# RAG Specific - DO NOT UPLOAD THESE (TOO LARGE)
+# ChromaDB Database
+chroma_db/
+*.db
+*.sqlite
+*.sqlite3
+
+# Model Caches (VERY LARGE - models download automatically)
+cache/
+.cache/
+models/
+*.bin
+*.safetensors
+*.onnx
+*.pt
+*.pth
+
+# Hugging Face Cache (HUGE - let users download their own)
+.huggingface/
+
+# Document uploads (may contain sensitive data)
+uploads/
+uploaded_files/
+temp/
+tmp/
+
+# Logs
+*.log
+logs/
+rag_system.log
+
+# Generated outputs
+outputs/
+results/
+
+# Test files
+test_documents/
+sample_docs/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# API Keys (CRITICAL - NEVER UPLOAD)
+*.key
+secrets.py
+config_local.py
+api_keys.txt
+
+# Large data files
+*.pdf
+*.docx
+*.xlsx
+*.pptx
+*.zip
+*.tar.gz
+
+# Backup files
+*_old.py
+*_backup.py
+*.bak
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Pytest
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
