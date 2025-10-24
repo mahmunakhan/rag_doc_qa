@@ -212,9 +212,11 @@ class RAGChatbot:
                     if "sources" in message and message["sources"]:
                         with st.expander("📚 Sources Used (Click to Expand)"):
                             for i, source in enumerate(message["sources"]):
-                                similarity_score = source.get('similarity_score', 0)
-                                score_display = f"{similarity_score:.3f}" if isinstance(similarity_score, (int, float)) else 'N/A'
                                 
+                                similarity_score = 0
+                                if "search_results" in message and i < len(message["search_results"]):
+                                    similarity_score = message["search_results"][i].get('similarity_score', 0)
+                                score_display = f"{similarity_score:.3f}" if isinstance(similarity_score, (int, float)) else 'N/A'
                                 # Get content and apply smart highlighting
                                 content = ""
                                 if "search_results" in message and i < len(message["search_results"]):
