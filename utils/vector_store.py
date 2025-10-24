@@ -200,7 +200,7 @@ class VectorStore:
             # Add rerank scores to results
             for result, score in zip(results, rerank_scores):
                 result["rerank_score"] = float(score)
-                 result["similarity_score"] = float(score)  
+                result["similarity_score"] = float(score)  #
             
             # Sort by rerank score
             results.sort(key=lambda x: x["rerank_score"], reverse=True)
