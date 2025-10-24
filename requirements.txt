@@ -10,3 +10,9 @@ markdown
 langchain
 langchain-community
 langchain-text-splitters
+
+tiktoken
+PyMuPDF
+Pillow
+numpy
+scikit-learn

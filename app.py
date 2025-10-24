@@ -4,7 +4,9 @@ import sys
 from utils.document_processor import DocumentProcessor
 from utils.vector_store import VectorStore
 from utils.rag_engine import RAGEngine
+from utils.highlighter import DocumentHighlighter, highlight_in_chunk
 import time
+import tempfile
 
 # Page configuration
 st.set_page_config(
@@ -14,10 +16,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Enhanced CSS for both dark and light themes
+# Enhanced CSS
 st.markdown("""
 <style>
-    /* Main text colors that work in both themes */
     .main-header {
         font-size: 2.5rem;
         color: #1f77b4;
@@ -25,7 +26,6 @@ st.markdown("""
         margin-bottom: 2rem;
     }
     
-    /* Chat message styling with high contrast */
     .chat-message {
         padding: 1.5rem;
         border-radius: 0.5rem;
@@ -45,20 +45,6 @@ st.markdown("""
         color: #000000 !important;
     }
     
-    /* Ensure text is visible in both themes */
-    .stChatMessage {
-        color: #000000 !important;
-    }
-    
-    .chat-message strong {
-        color: #000000 !important;
-    }
-    
-    .chat-message div {
-        color: #000000 !important;
-    }
-    
-    /* Source box styling */
     .source-box {
         background-color: #ffffff;
         border: 2px solid #dee2e6;
@@ -74,48 +60,21 @@ st.markdown("""
         color: #1f77b4 !important;
     }
     
-    /* Make sure all text in expanders is visible */
-    .streamlit-expanderHeader {
-        color: #000000 !important;
-        font-weight: bold;
-    }
-    
-    .streamlit-expanderContent {
-        color: #000000 !important;
-    }
-    
-    /* Metric cards styling */
-    [data-testid="metric-container"] {
-        background-color: #f8f9fa;
-        padding: 1rem;
+    .highlight-container {
+        background: #fffef0;
+        border: 2px solid #ffd700;
         border-radius: 0.5rem;
-        border: 1px solid #ddd;
+        padding: 1rem;
+        margin-top: 0.5rem;
     }
     
-    [data-testid="metric-container"] label {
-        color: #000000 !important;
+    mark {
+        background-color: yellow;
+        padding: 2px 4px;
+        font-weight: bold;
+        border-radius: 2px;
     }
     
-    [data-testid="metric-container"] div {
-        color: #000000 !important;
-    }
-    
-    /* Force dark text in all containers */
-    .stApp {
-        color: #000000 !important;
-    }
-    
-    /* Sidebar styling */
-    .css-1d391kg, .css-1lcbmhc {
-        background-color: #f0f2f6;
-    }
-    
-    /* Make uploaded file names visible */
-    .uploadedFile {
-        color: #000000 !important;
-    }
-    
-    /* Button styling */
     .stButton button {
         background-color: #1f77b4;
         color: white;
@@ -129,42 +88,33 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ============================================================
-# CRITICAL: Cache expensive resources to prevent reloading
-# ============================================================
-
 @st.cache_resource
 def get_vector_store():
-    """
-    Initialize and cache vector store
-    This prevents reloading embeddings and reranker on every interaction
-    """
-    print("🔄 Initializing Vector Store (will be cached)...")
+    """Initialize and cache vector store"""
+    print("📄 Initializing Vector Store (will be cached)...")
     return VectorStore()
 
 
 @st.cache_resource
 def get_rag_engine():
-    """
-    Initialize and cache RAG engine
-    This prevents reloading the LLM on every interaction
-    """
-    print("🔄 Initializing RAG Engine (will be cached)...")
+    """Initialize and cache RAG engine"""
+    print("📄 Initializing RAG Engine (will be cached)...")
     return RAGEngine()
 
 
-# ============================================================
-# Main RAG Chatbot Class
-# ============================================================
+@st.cache_resource
+def get_highlighter():
+    """Initialize and cache document highlighter"""
+    print("📄 Initializing Document Highlighter (will be cached)...")
+    return DocumentHighlighter()
+
 
 class RAGChatbot:
     def __init__(self):
-        # Document processor is lightweight, no need to cache
         self.document_processor = DocumentProcessor()
-        
-        # Use cached versions of heavy components
         self.vector_store = get_vector_store()
         self.rag_engine = get_rag_engine()
+        self.highlighter = get_highlighter()
         
         # Initialize session state
         if "messages" not in st.session_state:
@@ -173,9 +123,11 @@ class RAGChatbot:
             st.session_state.documents_processed = False
         if "collection_info" not in st.session_state:
             st.session_state.collection_info = self.vector_store.get_collection_info()
+        if "uploaded_files_paths" not in st.session_state:
+            st.session_state.uploaded_files_paths = {}  # filename -> temp_path mapping
     
     def process_uploaded_files(self, uploaded_files):
-        """Process all uploaded files"""
+        """Process all uploaded files and store their paths"""
         if not uploaded_files:
             return
         
@@ -189,6 +141,17 @@ class RAGChatbot:
             status_text.text(f"Processing {uploaded_file.name}...")
             
             try:
+                # Save file to temp location
+                temp_dir = tempfile.gettempdir()
+                temp_path = os.path.join(temp_dir, f"rag_{uploaded_file.name}")
+                
+                with open(temp_path, 'wb') as f:
+                    f.write(uploaded_file.getvalue())
+                
+                # Store the path for later highlighting
+                st.session_state.uploaded_files_paths[uploaded_file.name] = temp_path
+                
+                # Process the document
                 documents = self.document_processor.process_uploaded_file(uploaded_file)
                 all_documents.extend(documents)
                 st.success(f"✅ Processed {uploaded_file.name} - {len(documents)} chunks")
@@ -203,7 +166,6 @@ class RAGChatbot:
             status_text.text("Adding documents to vector database...")
             self.vector_store.add_documents(all_documents)
             
-            # Update collection info
             st.session_state.collection_info = self.vector_store.get_collection_info()
             st.session_state.documents_processed = True
             
@@ -215,7 +177,7 @@ class RAGChatbot:
     
     def display_chat_interface(self):
         """Display the main chat interface"""
-        st.markdown('<div class="main-header">🤖 RAG Chatbot</div>', unsafe_allow_html=True)
+        st.markdown('<div class="main-header">🤖 RAG Chatbot with Smart Highlighting</div>', unsafe_allow_html=True)
         
         # Display collection info
         col1, col2, col3 = st.columns(3)
@@ -226,12 +188,6 @@ class RAGChatbot:
         with col3:
             status = "Ready" if st.session_state.documents_processed else "No Documents"
             st.metric("Status", status)
-        
-        # Debug info in sidebar
-        if st.sidebar.checkbox("Show Debug Info"):
-            st.sidebar.write("Session state:", st.session_state)
-            if st.session_state.messages:
-                st.sidebar.write("Last message:", st.session_state.messages[-1])
         
         # Chat messages display
         chat_container = st.container()
@@ -245,33 +201,75 @@ class RAGChatbot:
                     </div>
                     """, unsafe_allow_html=True)
                 else:
-                    # Assistant message with response and sources
+                    # Assistant message
                     st.markdown(f"""
                     <div class="chat-message assistant-message">
                         <strong>Assistant:</strong> {message["content"]}
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # Display sources if available
+                    # Display sources with highlighted content
                     if "sources" in message and message["sources"]:
                         with st.expander("📚 Sources Used (Click to Expand)"):
                             for i, source in enumerate(message["sources"]):
-                                # Get similarity score safely
                                 similarity_score = source.get('similarity_score', 0)
                                 score_display = f"{similarity_score:.3f}" if isinstance(similarity_score, (int, float)) else 'N/A'
                                 
-                                # Find the actual content from search results
+                                # Get content and apply smart highlighting
                                 content = ""
                                 if "search_results" in message and i < len(message["search_results"]):
-                                    content = message["search_results"][i]["content"][:200] + "..." if len(message["search_results"][i]["content"]) > 200 else message["search_results"][i]["content"]
+                                    raw_content = message["search_results"][i]["content"]
+                                    
+                                    # Always attempt highlighting - function will only highlight matching terms
+                                    if "answer_text" in message:
+                                        content = highlight_in_chunk(raw_content, message["answer_text"])
+                                    else:
+                                        content = raw_content
+                                    
+                                    # Truncate if too long (but preserve HTML tags)
+                                    if len(content) > 800:
+                                        # Find a good breaking point
+                                        content = content[:800]
+                                        # Try to end at a sentence
+                                        last_period = content.rfind('.')
+                                        if last_period > 600:
+                                            content = content[:last_period + 1]
+                                        content += "..."
                                 
                                 st.markdown(f"""
                                 <div class="source-box">
                                     <strong>Source {i+1}:</strong> {source['source']} (Chunk {source['chunk_id'] + 1})<br>
                                     <strong>Similarity Score:</strong> {score_display}<br>
-                                    <strong>Content:</strong> {content}
+                                    <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin-top: 5px;">
+                                        <strong>Content:</strong><br>
+                                        {content}
+                                    </div>
                                 </div>
                                 """, unsafe_allow_html=True)
+                    
+                    # Show document-level highlighting if available
+                    if "show_highlighting" in message and message["show_highlighting"]:
+                        with st.expander("🔍 View Highlighted Evidence in Original Document"):
+                            if "highlight_results" in message:
+                                highlight_results = message["highlight_results"]
+                                
+                                if isinstance(highlight_results, list):  # PDF case
+                                    if highlight_results:
+                                        for img, page_number in highlight_results:
+                                            st.image(
+                                                img,
+                                                caption=f"📄 Highlighted Page {page_number}",
+                                                use_column_width=True
+                                            )
+                                    else:
+                                        st.info("No exact matches found in the original document for highlighting.")
+                                
+                                elif isinstance(highlight_results, str):  # Text/DOCX/MD case
+                                    st.markdown(highlight_results, unsafe_allow_html=True)
+                                else:
+                                    st.warning("Could not generate highlights for this document type.")
+                            else:
+                                st.info("Highlighting not available for this response.")
         
         # Chat input
         st.markdown("---")
@@ -285,22 +283,52 @@ class RAGChatbot:
             with st.spinner("🔍 Searching documents and generating response..."):
                 try:
                     # Search for relevant documents
-                    search_results = self.vector_store.search(user_input, n_results=3)
-                    st.sidebar.write(f"Debug: Found {len(search_results)} search results")
+                    search_results = self.vector_store.search(user_input, n_results=5)
                     
                     if search_results:
-                        st.sidebar.write(f"Debug: Top result similarity: {search_results[0].get('similarity_score', 'N/A')}")
-                    
-                    # Generate RAG response
-                    rag_result = self.rag_engine.rag_query(user_input, search_results)
-                    
-                    # Add assistant response to chat
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": rag_result["response"],
-                        "sources": rag_result["sources"],
-                        "search_results": rag_result["search_results"]
-                    })
+                        # Generate RAG response
+                        rag_result = self.rag_engine.rag_query(user_input, search_results)
+                        
+                        # Extract key phrases from answer for highlighting (first 150 chars)
+                        answer_text = rag_result["response"]
+                        highlight_text = answer_text[:150]  # Only use first part for highlighting
+                        
+                        # Try to highlight in the original document
+                        highlight_results = None
+                        if search_results and search_results[0]["metadata"].get("source"):
+                            source_filename = search_results[0]["metadata"]["source"]
+                            
+                            # Check if we have the file path
+                            if source_filename in st.session_state.uploaded_files_paths:
+                                file_path = st.session_state.uploaded_files_paths[source_filename]
+                                
+                                try:
+                                    # Attempt to highlight
+                                    highlight_results = self.highlighter.highlight_document(
+                                        file_path,
+                                        user_input,  # search sentence
+                                        highlight_text  # Use shortened text
+                                    )
+                                except Exception as e:
+                                    print(f"Highlighting error: {e}")
+                                    highlight_results = None
+                        
+                        # Add assistant response to chat
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": rag_result["response"],
+                            "sources": rag_result["sources"],
+                            "search_results": rag_result["search_results"],
+                            "answer_text": highlight_text,  # Store shortened version
+                            "show_highlighting": highlight_results is not None,
+                            "highlight_results": highlight_results
+                        })
+                    else:
+                        # No results found
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": "I couldn't find relevant information in the uploaded documents to answer your question. Please try rephrasing or upload more relevant documents."
+                        })
                     
                     # Rerun to update display
                     st.rerun()
@@ -309,7 +337,7 @@ class RAGChatbot:
                     error_msg = f"❌ Error generating response: {str(e)}"
                     st.error(error_msg)
                     st.session_state.messages.append({
-                        "role": "assistant", 
+                        "role": "assistant",
                         "content": error_msg
                     })
                     st.rerun()
@@ -336,10 +364,19 @@ class RAGChatbot:
         st.sidebar.subheader("Database Management")
         
         if st.sidebar.button("Clear All Documents"):
+            # Clean up temp files
+            for filename, temp_path in st.session_state.uploaded_files_paths.items():
+                try:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                except:
+                    pass
+            
             self.vector_store.clear_collection()
             st.session_state.collection_info = self.vector_store.get_collection_info()
             st.session_state.documents_processed = False
             st.session_state.messages = []
+            st.session_state.uploaded_files_paths = {}
             st.sidebar.success("🗑️ All documents cleared!")
             st.rerun()
         
@@ -347,37 +384,34 @@ class RAGChatbot:
         st.sidebar.markdown("---")
         st.sidebar.subheader("Current Documents")
         st.sidebar.write(f"📊 Total chunks: **{st.session_state.collection_info['total_documents']}**")
-        
-        # Debug information
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("Debug Info")
-        if st.sidebar.button("Show Session State"):
-            st.sidebar.write(st.session_state)
+        st.sidebar.write(f"📁 Files uploaded: **{len(st.session_state.uploaded_files_paths)}**")
         
         # Instructions
         st.sidebar.markdown("---")
-        st.sidebar.subheader("Instructions")
+        st.sidebar.subheader("✨ Features")
         st.sidebar.markdown("""
-        1. 📄 Upload PDF, TXT, or MD files
+        - 🔍 **Smart Search**: Advanced semantic search
+        - 💡 **Reranking**: Best results first
+        - 📚 **Source Citations**: See where answers come from
+        - 🎯 **Highlighting**: View evidence in context
+        - ⚡ **Fast**: Cached models for speed
+        """)
+        
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("📖 How to Use")
+        st.sidebar.markdown("""
+        1. 📄 Upload documents (PDF/TXT/MD)
         2. ⚡ Click 'Process Documents'  
         3. 💬 Ask questions in the chat
-        4. 📚 View sources for each response
+        4. 📚 Click 'Sources Used' to see evidence
+        5. 🔍 Click 'View Highlighted Evidence' to see exact locations
         """)
 
 
-# ============================================================
-# Main Application Entry Point
-# ============================================================
-
 def main():
     """Main application function"""
-    # Initialize chatbot (uses cached models)
     chatbot = RAGChatbot()
-    
-    # Display sidebar
     chatbot.display_sidebar()
-    
-    # Display main chat interface
     chatbot.display_chat_interface()
 
 
